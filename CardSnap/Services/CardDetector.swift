@@ -9,42 +9,77 @@ struct DetectionResult {
     let level: QualityLevel
 }
 
+// MARK: - One Euro Filter
+
+/// Adaptive low-pass filter: heavy smoothing when still, low lag when moving.
+/// Reference: Géry Casiez et al., "1€ Filter", CHI 2012.
+private class OneEuroFilter {
+    private let minCutoff: Double
+    private let beta: Double       // speed coefficient — higher = less lag on fast motion
+    private let dCutoff: Double
+
+    private var xPrev: Double?
+    private var dxPrev = 0.0
+
+    init(minCutoff: Double = 0.8, beta: Double = 0.4, dCutoff: Double = 1.0) {
+        self.minCutoff = minCutoff
+        self.beta = beta
+        self.dCutoff = dCutoff
+    }
+
+    func filter(_ x: Double, dt: Double) -> Double {
+        let aDeriv = alpha(dt: dt, cutoff: dCutoff)
+        let dx = xPrev.map { (x - $0) / dt } ?? 0.0
+        let dxHat = aDeriv * dx + (1 - aDeriv) * dxPrev
+
+        let cutoff = minCutoff + beta * abs(dxHat)
+        let aX = alpha(dt: dt, cutoff: cutoff)
+        let xHat = xPrev.map { aX * x + (1 - aX) * $0 } ?? x
+
+        xPrev = xHat
+        dxPrev = dxHat
+        return xHat
+    }
+
+    func reset() { xPrev = nil; dxPrev = 0 }
+
+    private func alpha(dt: Double, cutoff: Double) -> Double {
+        let tau = 1.0 / (2.0 * .pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+    }
+}
+
+// MARK: - CardDetector
+
 class CardDetector {
     private var previous: VNRectangleObservation?
     private var greenFrames = 0
     private let captureThreshold = 18 // ~0.6s at 30fps
 
-    // Smoothing: rolling average of last N corner positions
-    private var cornerHistory: [[CGPoint]] = []
-    private let historySize = 6
-
-    // Tracking state
-    private var trackedObservation: VNRectangleObservation?
-    private var framesSinceDetect = 0
-    private let redetectInterval = 45  // full re-detect every ~1.5s to avoid drift
+    // 8 filters: x + y for each of 4 corners [tL, tR, bL, bR]
+    private let filters: [[OneEuroFilter]] = (0..<4).map { _ in
+        [OneEuroFilter(), OneEuroFilter()]
+    }
+    private let dt = 1.0 / 30.0  // 30fps
 
     func detect(in pixelBuffer: CVPixelBuffer) -> DetectionResult? {
-        let obs: VNRectangleObservation?
+        let request = VNDetectRectanglesRequest()
+        // Standard business card is 3.375" × 2.125" = 1.588:1
+        request.minimumAspectRatio = 1.45
+        request.maximumAspectRatio = 1.75
+        request.minimumSize = 0.12
+        request.maximumObservations = 1
+        request.minimumConfidence = 0.4
+        request.quadratureTolerance = 25
 
-        if let tracked = trackedObservation, framesSinceDetect < redetectInterval {
-            obs = track(tracked, in: pixelBuffer)
-            framesSinceDetect += 1
-            if obs == nil {
-                // tracking lost — fall back to full detection immediately
-                trackedObservation = nil
-                framesSinceDetect = 0
-            }
-        } else {
-            obs = detectRectangle(in: pixelBuffer)
-            trackedObservation = obs
-            framesSinceDetect = 0
-        }
+        // .right = portrait mode (sensor is landscape; portrait = 90° CW)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+        try? handler.perform([request])
 
-        guard let obs else {
+        guard let obs = request.results?.first else {
             previous = nil
             greenFrames = 0
-            cornerHistory.removeAll()
-            trackedObservation = nil
+            filters.forEach { $0.forEach { $0.reset() } }
             return nil
         }
 
@@ -53,10 +88,14 @@ class CardDetector {
         greenFrames = level == .green ? greenFrames + 1 : 0
         previous = obs
 
+        // Apply One Euro Filter to each corner
         let raw = [obs.topLeft, obs.topRight, obs.bottomLeft, obs.bottomRight]
-        cornerHistory.append(raw)
-        if cornerHistory.count > historySize { cornerHistory.removeFirst() }
-        let smooth = smoothedCorners()
+        let smooth = raw.enumerated().map { i, pt in
+            CGPoint(
+                x: filters[i][0].filter(Double(pt.x), dt: dt),
+                y: filters[i][1].filter(Double(pt.y), dt: dt)
+            )
+        }
 
         return DetectionResult(
             topLeft: smooth[0], topRight: smooth[1],
@@ -69,57 +108,7 @@ class CardDetector {
 
     func resetStability() {
         greenFrames = 0
-        cornerHistory.removeAll()
-        trackedObservation = nil
-        framesSinceDetect = 0
-    }
-
-    // MARK: - Detection
-
-    private func detectRectangle(in pixelBuffer: CVPixelBuffer) -> VNRectangleObservation? {
-        let request = VNDetectRectanglesRequest()
-        // Standard business card is 3.375" × 2.125" = 1.588:1
-        // Tightened from 1.3–2.2 to cut false positives (phones, wallets, notebooks)
-        request.minimumAspectRatio = 1.45
-        request.maximumAspectRatio = 1.75
-        request.minimumSize = 0.12
-        request.maximumObservations = 1
-        request.minimumConfidence = 0.4
-        request.quadratureTolerance = 25
-
-        // .right = portrait mode (sensor is landscape, portrait = 90° CW)
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
-        try? handler.perform([request])
-        return request.results?.first
-    }
-
-    // MARK: - Tracking
-
-    private func track(_ observation: VNRectangleObservation, in pixelBuffer: CVPixelBuffer) -> VNRectangleObservation? {
-        let request = VNTrackRectangleRequest(rectangleObservation: observation)
-        request.trackingLevel = .accurate
-
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
-        try? handler.perform([request])
-
-        guard let result = request.results?.first as? VNRectangleObservation,
-              result.confidence > 0.3 else { return nil }
-
-        // Feed result back so next track call uses latest corners
-        trackedObservation = result
-        return result
-    }
-
-    // MARK: - Smoothing
-
-    private func smoothedCorners() -> [CGPoint] {
-        guard !cornerHistory.isEmpty else { return Array(repeating: .zero, count: 4) }
-        return (0..<4).map { i in
-            let xs = cornerHistory.map { $0[i].x }
-            let ys = cornerHistory.map { $0[i].y }
-            return CGPoint(x: xs.reduce(0, +) / CGFloat(xs.count),
-                           y: ys.reduce(0, +) / CGFloat(ys.count))
-        }
+        filters.forEach { $0.forEach { $0.reset() } }
     }
 
     // MARK: - Quality Scoring
