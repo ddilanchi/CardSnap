@@ -1,0 +1,16 @@
+# Secrets — never commit this
+CardSnap/Secrets.swift
+
+# Xcode
+*.xcuserstate
+*.xcuserdatad/
+DerivedData/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+
+# macOS
+.DS_Store
