@@ -37,7 +37,7 @@ struct CardOverlayView: View {
         let size: CGFloat = 20
         let lw: CGFloat = 4
         Canvas { ctx, _ in
-            let dirs: [(CGFloat, CGFloat)] = [(1, 1), (-1, 1), (1, -1), (-1, -1)]
+            let dirs: [(CGFloat, CGFloat)] = [(1, 1), (-1, 1), (-1, -1), (1, -1)]
             let (dx, dy) = dirs[index]
             var h = Path()
             h.move(to: CGPoint(x: point.x, y: point.y))
