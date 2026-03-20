@@ -2,7 +2,7 @@ import Foundation
 
 class GeminiService {
     private let apiKey = Secrets.geminiAPIKey
-    private let model = "gemini-2.0-flash"
+    private let model = "gemini-3.1-flash-lite-preview"
 
     // MARK: - Single side
 
