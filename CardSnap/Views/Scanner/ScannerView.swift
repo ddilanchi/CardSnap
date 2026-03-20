@@ -9,11 +9,9 @@ struct ScannerView: View {
 
     var body: some View {
         ZStack {
-            // Camera feed
             CameraPreview(camera: vm.camera)
                 .ignoresSafeArea()
 
-            // Detection overlay
             CardOverlayView(points: vm.overlayPoints, color: vm.overlayColor)
                 .ignoresSafeArea()
 
@@ -51,17 +49,15 @@ struct ScannerView: View {
         }
     }
 
-    // MARK: - Controls overlay
+    // MARK: - Controls
 
     private var controls: some View {
         VStack(spacing: 0) {
-            // Status bar
+            // Status pill + count badge
             HStack {
                 statusPill
                 Spacer()
-                if !vm.scannedCards.isEmpty {
-                    countBadge
-                }
+                if !vm.scannedCards.isEmpty { countBadge }
             }
             .padding(.horizontal)
             .padding(.top, 8)
@@ -80,8 +76,8 @@ struct ScannerView: View {
 
             Spacer()
 
-            // Last scanned banner + note button
-            if let card = vm.lastCard {
+            // Last card banner + note + 2-sided button
+            if let card = vm.lastCard, !vm.isScanningBackSide {
                 lastCardBanner(card)
                     .padding(.horizontal)
                     .padding(.bottom, 12)
@@ -89,15 +85,18 @@ struct ScannerView: View {
             }
 
             // Done button
-            if !vm.scannedCards.isEmpty {
+            if !vm.scannedCards.isEmpty && !vm.isScanningBackSide {
                 doneButton
                     .padding(.horizontal)
                     .padding(.bottom, 8)
             }
         }
+        .animation(.spring(duration: 0.3), value: vm.isScanningBackSide)
         .animation(.spring(duration: 0.3), value: vm.lastCard?.id)
         .animation(.spring(duration: 0.3), value: vm.isProcessing)
     }
+
+    // MARK: - Subviews
 
     private var statusPill: some View {
         Text(vm.statusText)
@@ -117,18 +116,28 @@ struct ScannerView: View {
     }
 
     private func lastCardBanner(_ card: ScannedCard) -> some View {
-        HStack {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(card.displayName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 if !card.entity.isEmpty && card.entity != card.displayName {
-                    Text(card.entity)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.8))
+                    Text(card.entity).font(.caption).foregroundStyle(.white.opacity(0.8))
                 }
             }
             Spacer()
+            // Two-sided button
+            Button {
+                vm.startBackSideScan(for: card)
+            } label: {
+                Text("2-sided")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.25), in: Capsule())
+            }
+            // Note button
             Button {
                 noteCardId = card.id
                 showNote = true
@@ -156,27 +165,18 @@ struct ScannerView: View {
         }
     }
 
-    // MARK: - Permission view
+    // MARK: - Permission
 
     private var permissionView: some View {
         VStack(spacing: 20) {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.gray)
-            Text("Camera Access Required")
-                .font(.title2.weight(.semibold))
+            Image(systemName: "camera.fill").font(.system(size: 56)).foregroundStyle(.gray)
+            Text("Camera Access Required").font(.title2.weight(.semibold))
             Text("CardSnap needs your camera to scan business cards.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
             Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .buttonStyle(.borderedProminent).tint(.red)
         }
     }
 }

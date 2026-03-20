@@ -19,10 +19,12 @@
 		A0D7DE89DD5F1834D9E513C7 /* ScannedCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 764033492A10B4674F45DB80 /* ScannedCard.swift */; };
 		A245D88F17188EC84CD94E81 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666C850B0E34550243CF75BC /* ActivityView.swift */; };
 		AA892C37A5FFA5949115FD6F /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08416DE6A76C347D0D32606 /* MainTabView.swift */; };
+		B0128641CE96B4382CCA01CC /* Secrets.swift.template in Resources */ = {isa = PBXBuildFile; fileRef = F65FA7B9699A2C47126B9F3F /* Secrets.swift.template */; };
 		B3C4CFF9E17DB2CF547F32ED /* CardDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB36D4424D9B0F1C61293A2F /* CardDetailView.swift */; };
 		C2207414239EC948411FA7B5 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 262FFA2891820A3E450FF7E7 /* HapticManager.swift */; };
 		C826CD8B7D3CD780F916993B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 78F74766C5DE05FC0A7328F0 /* Assets.xcassets */; };
 		CEBDD0DF1DC16E2BC251C396 /* CardDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222522D3BC0FEA8F109D5784 /* CardDetector.swift */; };
+		D9BB91398864393C30CADC42 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0240EB9B70FB6FC79F25DB1 /* Secrets.swift */; };
 		E8386453D10E2870F0EB2753 /* ScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAD0667C38822CE6A5C0F63 /* ScannerView.swift */; };
 		F21AB788826C710D93175C94 /* CameraManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C468C7E9501C4F00FB3A345 /* CameraManager.swift */; };
 		F3DD28C42171E6A9C115DE05 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37B52960D5DBDCFC08D2AAF4 /* StorageService.swift */; };
@@ -49,12 +51,14 @@
 		A99BBF4EB6EA895324717CAB /* ScannerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerViewModel.swift; sourceTree = "<group>"; };
 		B34F912BD390152BE74658E8 /* SoundManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundManager.swift; sourceTree = "<group>"; };
 		B75E5F1333F0E17FDDB610BC /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
+		C0240EB9B70FB6FC79F25DB1 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		C30DAA8225A3DBB1EE56EC34 /* SessionResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionResultView.swift; sourceTree = "<group>"; };
 		DAC43F47DD2F8A6F3C345251 /* ScanBatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanBatch.swift; sourceTree = "<group>"; };
 		E08416DE6A76C347D0D32606 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		E63F3FC70CC3323D4033DA6F /* NoteInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteInputView.swift; sourceTree = "<group>"; };
 		EC0168A9F52B04A01F28F1F7 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		EEAD0667C38822CE6A5C0F63 /* ScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerView.swift; sourceTree = "<group>"; };
+		F65FA7B9699A2C47126B9F3F /* Secrets.swift.template */ = {isa = PBXFileReference; path = Secrets.swift.template; sourceTree = "<group>"; };
 		F769FD31D5F45710ADDB8097 /* CardSnapApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardSnapApp.swift; sourceTree = "<group>"; };
 		FB36D4424D9B0F1C61293A2F /* CardDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDetailView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -119,6 +123,8 @@
 			isa = PBXGroup;
 			children = (
 				78F74766C5DE05FC0A7328F0 /* Assets.xcassets */,
+				C0240EB9B70FB6FC79F25DB1 /* Secrets.swift */,
+				F65FA7B9699A2C47126B9F3F /* Secrets.swift.template */,
 				DC3C4EE86D122004BADAA71F /* App */,
 				01557613998C2857E9F02482 /* Models */,
 				AB842C980BE37EBE0D940524 /* Services */,
@@ -209,7 +215,7 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					57FF1764A5BD8A56997BBF47 = {
-						DevelopmentTeam = WW83R83KG3;
+						DevelopmentTeam = UV4L4ANNQS;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -239,6 +245,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C826CD8B7D3CD780F916993B /* Assets.xcassets in Resources */,
+				B0128641CE96B4382CCA01CC /* Secrets.swift.template in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -268,6 +275,7 @@
 				A0D7DE89DD5F1834D9E513C7 /* ScannedCard.swift in Sources */,
 				E8386453D10E2870F0EB2753 /* ScannerView.swift in Sources */,
 				012F4AF680AB3E6F776EED30 /* ScannerViewModel.swift in Sources */,
+				D9BB91398864393C30CADC42 /* Secrets.swift in Sources */,
 				1FE0848F0A392ABB99C7B270 /* SessionResultView.swift in Sources */,
 				F510B023A5AE0D1069E7E89C /* SoundManager.swift in Sources */,
 				F3DD28C42171E6A9C115DE05 /* StorageService.swift in Sources */,
@@ -313,7 +321,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = WW83R83KG3;
+				DEVELOPMENT_TEAM = UV4L4ANNQS;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -380,7 +388,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = WW83R83KG3;
+				DEVELOPMENT_TEAM = UV4L4ANNQS;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;

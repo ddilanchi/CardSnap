@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 class ScannerViewModel: ObservableObject {
     let camera = CameraManager()
@@ -16,6 +15,11 @@ class ScannerViewModel: ObservableObject {
     @Published var duplicateOf: ScannedCard?
     @Published var errorMessage: String?
     @Published var showError = false
+
+    // Two-sided: set when user requests back-side scan
+    @Published var isScanningBackSide = false
+    private var frontImageData: Data?
+    private var frontCardId: UUID?
 
     private var isBusy = false
     private var pendingCard: ScannedCard?
@@ -38,12 +42,12 @@ class ScannerViewModel: ObservableObject {
             guard let result else {
                 overlayPoints = []
                 overlayColor = .clear
-                if !isProcessing { statusText = "Point camera at a business card" }
+                if !isProcessing { statusText = isScanningBackSide ? "Show the back of the card" : "Point camera at a business card" }
                 return
             }
 
             overlayPoints = [result.topLeft, result.topRight, result.bottomRight, result.bottomLeft]
-                .map { camera.convertPoint($0) }
+                .map { self.camera.convertPoint($0) }
 
             switch result.level {
             case .red:    overlayColor = .red;    if !isProcessing { statusText = "Move closer or adjust angle" }
@@ -66,51 +70,78 @@ class ScannerViewModel: ObservableObject {
         Task {
             do {
                 let imageData = try await camera.capturePhoto()
-                let card = try await gemini.extractCardInfo(from: imageData)
 
-                await MainActor.run {
-                    if let dup = findDuplicate(of: card) {
-                        duplicateOf = dup
-                        pendingCard = card
-                        showDuplicateAlert = true
-                        HapticManager.shared.duplicateWarning()
-                    } else {
-                        add(card)
+                if isScanningBackSide, let front = frontImageData, let cardId = frontCardId {
+                    // Merge front + back
+                    let merged = try await gemini.extractCardInfo(front: front, back: imageData)
+                    await MainActor.run {
+                        // Replace the existing front-only card with merged data
+                        if let i = self.scannedCards.firstIndex(where: { $0.id == cardId }) {
+                            var updated = merged
+                            updated.id = cardId
+                            self.scannedCards[i] = updated
+                            self.lastCard = updated
+                        }
+                        self.reset(status: "✓ Both sides captured")
+                    }
+                } else {
+                    // Single-sided (default)
+                    let card = try await gemini.extractCardInfo(from: imageData)
+                    await MainActor.run {
+                        self.capturedFrontData[card.id] = imageData  // store for optional back-side scan
+                        self.addOrFlagDuplicate(card)
+                        self.reset(status: "✓ Got \(card.displayName)")
                     }
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    showError = true
+                    self.reset(status: "Point camera at a business card")
+                    self.errorMessage = error.localizedDescription
+                    self.showError = true
                     HapticManager.shared.error()
                 }
             }
+        }
+    }
 
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+    // Called when user taps "2-sided" on the last card banner
+    func startBackSideScan(for card: ScannedCard) {
+        guard let imageData = capturedFrontData[card.id] else { return }
+        frontImageData = imageData
+        frontCardId = card.id
+        isScanningBackSide = true
+        statusText = "Now show the back of the card"
+    }
 
-            await MainActor.run {
-                isProcessing = false
-                isBusy = false
-                detector.resetStability()
-                statusText = "Ready for next card"
-            }
+    // Store front image data keyed by card ID so we can retrieve it later
+    private var capturedFrontData: [UUID: Data] = [:]
+
+    private func reset(status: String) {
+        isProcessing = false
+        isBusy = false
+        isScanningBackSide = false
+        frontImageData = nil
+        frontCardId = nil
+        detector.resetStability()
+        statusText = status
+    }
+
+    private func addOrFlagDuplicate(_ card: ScannedCard) {
+        if let dup = findDuplicate(of: card) {
+            duplicateOf = dup; pendingCard = card; showDuplicateAlert = true
+            HapticManager.shared.duplicateWarning()
+        } else {
+            add(card)
         }
     }
 
     func add(_ card: ScannedCard) {
         scannedCards.append(card)
         lastCard = card
-        statusText = "✓ Got \(card.displayName)"
     }
 
-    func acceptDuplicate() {
-        if let c = pendingCard { add(c) }
-        pendingCard = nil; duplicateOf = nil
-    }
-
-    func rejectDuplicate() {
-        pendingCard = nil; duplicateOf = nil
-    }
+    func acceptDuplicate() { if let c = pendingCard { add(c) }; pendingCard = nil; duplicateOf = nil }
+    func rejectDuplicate() { pendingCard = nil; duplicateOf = nil }
 
     func appendNote(_ note: String, to cardId: UUID) {
         guard let i = scannedCards.firstIndex(where: { $0.id == cardId }) else { return }
@@ -123,17 +154,16 @@ class ScannerViewModel: ObservableObject {
         guard !scannedCards.isEmpty else { return nil }
         let batch = ScanBatch(cards: scannedCards)
         StorageService.shared.add(batch)
-        scannedCards = []
-        lastCard = nil
+        scannedCards = []; lastCard = nil; capturedFrontData = [:]
+        isScanningBackSide = false; frontImageData = nil; frontCardId = nil
         statusText = "Point camera at a business card"
         return batch
     }
 
     private func findDuplicate(of card: ScannedCard) -> ScannedCard? {
-        scannedCards.first { existing in
-            (!card.email.isEmpty && card.email.lowercased() == existing.email.lowercased()) ||
-            (similarity(card.principal, existing.principal) > 0.8 &&
-             similarity(card.entity, existing.entity) > 0.7)
+        scannedCards.first {
+            (!card.email.isEmpty && card.email.lowercased() == $0.email.lowercased()) ||
+            (similarity(card.principal, $0.principal) > 0.8 && similarity(card.entity, $0.entity) > 0.7)
         }
     }
 
@@ -141,9 +171,7 @@ class ScannerViewModel: ObservableObject {
         let a = a.lowercased(), b = b.lowercased()
         guard !a.isEmpty && !b.isEmpty else { return a == b ? 1 : 0 }
         let longer = a.count >= b.count ? a : b
-        let shorter = a.count < b.count ? a : b
-        let dist = levenshtein(longer, shorter)
-        return 1.0 - Double(dist) / Double(longer.count)
+        return 1.0 - Double(levenshtein(longer, a.count < b.count ? a : b)) / Double(longer.count)
     }
 
     private func levenshtein(_ a: String, _ b: String) -> Int {

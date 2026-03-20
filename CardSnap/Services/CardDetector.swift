@@ -14,49 +14,75 @@ class CardDetector {
     private var greenFrames = 0
     private let captureThreshold = 18 // ~0.6s at 30fps
 
+    // Smoothing: rolling average of last N corner positions
+    private var cornerHistory: [[CGPoint]] = []
+    private let historySize = 6
+
     func detect(in pixelBuffer: CVPixelBuffer) -> DetectionResult? {
         let request = VNDetectRectanglesRequest()
         request.minimumAspectRatio = 1.3
         request.maximumAspectRatio = 2.2
-        request.minimumSize = 0.15
+        request.minimumSize = 0.12
         request.maximumObservations = 1
-        request.minimumConfidence = 0.5
+        request.minimumConfidence = 0.4
+        request.quadratureTolerance = 25
 
-        try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([request])
+        // Pass .right so Vision correctly interprets the portrait-held camera frame
+        // (back camera sensor is landscape; portrait mode = 90° CW rotation = .right)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+        try? handler.perform([request])
 
         guard let obs = request.results?.first else {
             previous = nil
             greenFrames = 0
+            cornerHistory.removeAll()
             return nil
         }
 
-        let bufW = CVPixelBufferGetWidth(pixelBuffer)
-        let bufH = CVPixelBufferGetHeight(pixelBuffer)
-        let quality = score(obs, bufferSize: CGSize(width: bufW, height: bufH))
-
+        let quality = score(obs)
         let level: QualityLevel = quality >= 0.78 ? .green : quality >= 0.42 ? .yellow : .red
         greenFrames = level == .green ? greenFrames + 1 : 0
         previous = obs
 
+        // Smooth corners
+        let raw = [obs.topLeft, obs.topRight, obs.bottomLeft, obs.bottomRight]
+        cornerHistory.append(raw)
+        if cornerHistory.count > historySize { cornerHistory.removeFirst() }
+        let smooth = smoothedCorners()
+
         return DetectionResult(
-            topLeft: obs.topLeft, topRight: obs.topRight,
-            bottomLeft: obs.bottomLeft, bottomRight: obs.bottomRight,
+            topLeft: smooth[0], topRight: smooth[1],
+            bottomLeft: smooth[2], bottomRight: smooth[3],
             quality: quality, level: level
         )
     }
 
     var isReadyToCapture: Bool { greenFrames >= captureThreshold }
 
-    func resetStability() { greenFrames = 0 }
+    func resetStability() {
+        greenFrames = 0
+        cornerHistory.removeAll()
+    }
+
+    // MARK: - Smoothing
+
+    private func smoothedCorners() -> [CGPoint] {
+        guard !cornerHistory.isEmpty else { return Array(repeating: .zero, count: 4) }
+        return (0..<4).map { i in
+            let xs = cornerHistory.map { $0[i].x }
+            let ys = cornerHistory.map { $0[i].y }
+            return CGPoint(x: xs.reduce(0, +) / CGFloat(xs.count),
+                           y: ys.reduce(0, +) / CGFloat(ys.count))
+        }
+    }
 
     // MARK: - Quality Scoring
 
-    private func score(_ obs: VNRectangleObservation, bufferSize: CGSize) -> Double {
-        let confidence = Double(obs.confidence) * 0.25
-        let size = min(area(obs) / 0.25, 1.0) * 0.25
-        let rect = rectangularity(obs) * 0.25
-        let stable = stability(obs) * 0.25
-        return confidence + size + rect + stable
+    private func score(_ obs: VNRectangleObservation) -> Double {
+        Double(obs.confidence) * 0.25
+        + min(area(obs) / 0.25, 1.0) * 0.25
+        + rectangularity(obs) * 0.25
+        + stability(obs) * 0.25
     }
 
     private func area(_ obs: VNRectangleObservation) -> Double {
@@ -79,8 +105,7 @@ class CardDetector {
             let dot = Double(v1.x * v2.x + v1.y * v2.y)
             let mag = sqrt(Double(v1.x*v1.x + v1.y*v1.y)) * sqrt(Double(v2.x*v2.x + v2.y*v2.y))
             guard mag > 0 else { return 0 }
-            let angle = acos(min(max(dot / mag, -1), 1))
-            totalDev += abs(angle - .pi / 2) / (.pi / 2)
+            totalDev += abs(acos(min(max(dot / mag, -1), 1)) - .pi / 2) / (.pi / 2)
         }
         return max(0, 1.0 - totalDev / 4.0)
     }
