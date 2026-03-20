@@ -18,24 +18,33 @@ class CardDetector {
     private var cornerHistory: [[CGPoint]] = []
     private let historySize = 6
 
+    // Tracking state
+    private var trackedObservation: VNRectangleObservation?
+    private var framesSinceDetect = 0
+    private let redetectInterval = 45  // full re-detect every ~1.5s to avoid drift
+
     func detect(in pixelBuffer: CVPixelBuffer) -> DetectionResult? {
-        let request = VNDetectRectanglesRequest()
-        request.minimumAspectRatio = 1.3
-        request.maximumAspectRatio = 2.2
-        request.minimumSize = 0.12
-        request.maximumObservations = 1
-        request.minimumConfidence = 0.4
-        request.quadratureTolerance = 25
+        let obs: VNRectangleObservation?
 
-        // Pass .right so Vision correctly interprets the portrait-held camera frame
-        // (back camera sensor is landscape; portrait mode = 90° CW rotation = .right)
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
-        try? handler.perform([request])
+        if let tracked = trackedObservation, framesSinceDetect < redetectInterval {
+            obs = track(tracked, in: pixelBuffer)
+            framesSinceDetect += 1
+            if obs == nil {
+                // tracking lost — fall back to full detection immediately
+                trackedObservation = nil
+                framesSinceDetect = 0
+            }
+        } else {
+            obs = detectRectangle(in: pixelBuffer)
+            trackedObservation = obs
+            framesSinceDetect = 0
+        }
 
-        guard let obs = request.results?.first else {
+        guard let obs else {
             previous = nil
             greenFrames = 0
             cornerHistory.removeAll()
+            trackedObservation = nil
             return nil
         }
 
@@ -44,7 +53,6 @@ class CardDetector {
         greenFrames = level == .green ? greenFrames + 1 : 0
         previous = obs
 
-        // Smooth corners
         let raw = [obs.topLeft, obs.topRight, obs.bottomLeft, obs.bottomRight]
         cornerHistory.append(raw)
         if cornerHistory.count > historySize { cornerHistory.removeFirst() }
@@ -62,6 +70,44 @@ class CardDetector {
     func resetStability() {
         greenFrames = 0
         cornerHistory.removeAll()
+        trackedObservation = nil
+        framesSinceDetect = 0
+    }
+
+    // MARK: - Detection
+
+    private func detectRectangle(in pixelBuffer: CVPixelBuffer) -> VNRectangleObservation? {
+        let request = VNDetectRectanglesRequest()
+        // Standard business card is 3.375" × 2.125" = 1.588:1
+        // Tightened from 1.3–2.2 to cut false positives (phones, wallets, notebooks)
+        request.minimumAspectRatio = 1.45
+        request.maximumAspectRatio = 1.75
+        request.minimumSize = 0.12
+        request.maximumObservations = 1
+        request.minimumConfidence = 0.4
+        request.quadratureTolerance = 25
+
+        // .right = portrait mode (sensor is landscape, portrait = 90° CW)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+        try? handler.perform([request])
+        return request.results?.first
+    }
+
+    // MARK: - Tracking
+
+    private func track(_ observation: VNRectangleObservation, in pixelBuffer: CVPixelBuffer) -> VNRectangleObservation? {
+        let request = VNTrackRectangleRequest(rectangleObservation: observation)
+        request.trackingLevel = .accurate
+
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+        try? handler.perform([request])
+
+        guard let result = request.results?.first as? VNRectangleObservation,
+              result.confidence > 0.3 else { return nil }
+
+        // Feed result back so next track call uses latest corners
+        trackedObservation = result
+        return result
     }
 
     // MARK: - Smoothing
